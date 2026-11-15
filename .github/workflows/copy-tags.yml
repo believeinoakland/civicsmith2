@@ -1,0 +1,25 @@
+name: Copy tags from source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  copy-tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out civicsmith2 with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags from the source repo
+        run: |
+          git remote add source https://github.com/neobobkrause/civicsmith-copy.git
+          git fetch --no-tags source '+refs/tags/*:refs/tags/*'
+          echo "Tags fetched: $(git tag | wc -l)"
+
+      - name: Push the tags to civicsmith2
+        run: git push origin --tags
