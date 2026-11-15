@@ -61,6 +61,8 @@ const T51_FAMILIES = Object.freeze([
    no spec in `OPS`, no row in `NEEDS`, no place in either session set, `ACT_GATE`, `REAUTH_ACTS` or an act list, no route
    and no stamp, and is never sent to the op door. `registry` is the row each takes the place of in the screen registry.
    The rows are `{screen, census, registry}`. */
+/** @type {ReadonlyArray<readonly [string, string, string]>} each [act, screen, census]
+    @bound act: no op OPS holds */
 const BROWSER_ACT_ROWS = Object.freeze([
   ["revisioncompare", "document", "A27"], ["hashcopy", "document", "A26"], ["linkopen", "document", "A30"],
   ["pubfloorset", "published", "A77"], ["pubfloorclear", "published", "A77"], ["pubprint", "published", "A79"],

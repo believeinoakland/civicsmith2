@@ -8,7 +8,9 @@
  * carry none and are cleared by the whole-store purge only. Every name in attribution is held by value beside the id.
  * A Civicsmith script is never a row: it is the library registered at start (R13). A copy's base (R3) and the instant
  * each newer base version was first found (R26) are rows of their own (T34, DEC-158). */
+/** @import { TableClass } from './index.mjs' */
 
+/** @type {string} the tables' SQL, each statement ending in `;` */
 export const WIZARD_SCRIPTS_SCHEMA = `
 -- R1: A SCRIPT of a project; widened by a 'widened' event (R7).
 CREATE TABLE IF NOT EXISTS wiz_scripts (
@@ -142,15 +144,17 @@ CREATE INDEX IF NOT EXISTS wiz_refusal_tallies_key ON wiz_refusal_tallies (op, c
  *  whole-store purge only), never expunged, exported to administrators only, stored, never derived. A project's script
  *  rows are seen by the project's sight; grants and tallies are group-wide. Versions and revisions append, never
  *  overwrite. Keying stays R46's: by `bundle_id` where a table has it. */
-export const WIZARD_SCRIPTS_TABLE_CLASSES = Object.freeze([
+/** @type {readonly Readonly<TableClass>[]} */
+export const WIZARD_SCRIPTS_TABLE_CLASSES = Object.freeze(/** @type {[string, 'bundle' | 'group', boolean][]} */ ([
   ["wiz_scripts", "bundle", false], ["wiz_versions", "bundle", true], ["wiz_revisions", "bundle", true], ["wiz_events", "bundle", false],
   ["wiz_proposals", "bundle", false], ["wiz_editor_grants", "group", false], ["wiz_editor_revocations", "group", false],
   ["wiz_breaks", "bundle", false], ["wiz_tallies", "group", false], ["wiz_refusal_tallies", "group", false],
   ["wiz_copies", "bundle", false], ["wiz_base_seen", "bundle", false],
-].map(([name, sight, chain]) => Object.freeze({ name, purge: "clear", expunge: "none", export: "admin-only", sight, derive: "stored",
+]).map(([name, sight, chain]) => Object.freeze({ name, purge: "clear", expunge: "none", export: "admin-only", sight, derive: "stored",
                                                 version_chain: chain })));
 
 /** The tables, each keyed to its bundle by `bundle_id` where it has one (record-core R21, R46; K23). */
+/** @type {readonly string[]} */
 export const WIZARD_SCRIPTS_TABLES = Object.freeze(WIZARD_SCRIPTS_TABLE_CLASSES.map((t) => t.name));
 
 /** The opaque ids its tables hold, for record-core's mint ledger (its R40, R70). */

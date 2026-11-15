@@ -33,6 +33,492 @@ import { word, localize } from "../setup-words/index.mjs";
 import { AI_ACCOUNT_CHECKS, AI_WORDS } from "./checks.mjs";
 export { AI_ACCOUNT_CHECKS, AI_WORDS } from "./checks.mjs";
 
+/* ===== the kinds of this module's interface (structured comments; nothing here runs) ===== */
+
+/**
+ * A refusal, as every act and read of this module answers one instead of throwing: this module's own rows (C-29). The
+ * optional members are what the refusal of one site adds; a site may add others (any member name), so a refusal is read
+ * by its `ok` first.
+ * @typedef {RefusalMembers & Object<string, *>} Refusal
+ */
+
+/**
+ * The members of a refusal that this module names.
+ * @typedef {Object} RefusalMembers
+ * @property {false} ok
+ * @property {string} reason the refusal's code
+ * @property {string} code
+ * @property {string} [check] the row's number, C-29.n
+ * @property {*} [translation] the sentence of the row, placeholders left as {name}
+ * @property {*} [detail] the sentence for this refusal
+ * @property {KeepAwayWho} [keep_away] AI_KEPT_AWAY and PROJECT_AI_KEPT_AWAY: the limit's reason, who and when
+ * @property {string | null} [project]
+ * @property {string | null} [use]
+ * @property {string | null} [member]
+ * @property {string | null} [switch] UNKNOWN_SWITCH and SWITCH_VALUE_INVALID: the switch named
+ * @property {(string | boolean)[]} [values] SWITCH_VALUE_INVALID: the values the switch takes
+ * @property {'project' | 'own' | 'group'} [whose] AI_USE_SWITCHED_OFF: whose account it is
+ * @property {string} [project_name] PROJECT_KEY_NOTICE_DUE: the project's name
+ * @property {{key: string, text: *}} [disclosure] PROJECT_KEY_NOTICE_DUE: the notice owed, its project's name filled
+ * @bound code: a code of AI_ACCOUNT_CHECKS
+ */
+
+/**
+ * A refusal membership mints, passed on as it is (membership states no kind; `ok` is false whenever one is answered).
+ * @typedef {{ok: boolean, reason: string, code: string, check: *, translation: *, detail: *, [member: string]: *}} MembershipRefusal
+ */
+
+/**
+ * Who set a material limit, when, and why (R21).
+ * @typedef {Object} KeepAwayWho
+ * @property {string | null} reason
+ * @property {string | null} set_by
+ * @property {string | null} set_at
+ */
+
+/**
+ * The team's material limit (R20–R22): `on` null when it cannot be read (read as kept away).
+ * @typedef {Object} KeepAwayState
+ * @property {boolean | null} on
+ * @property {string | null} reason
+ * @property {string | null} set_by the member who set it
+ * @property {string | null} set_at
+ * @property {string[] | null} uses the kinds of use it covers
+ * @bound uses: each one of USE_KINDS, once, in USE_KINDS' order; every kind when the limit names none
+ * @bound reason: 1 to 2,000 characters, not blank, whenever the limit is on
+ * @bound set_at: an instant written YYYY-MM-DDTHH:MM:SSZ
+ */
+
+/**
+ * The team's limit as an act answers it.
+ * @typedef {{ok: true} & KeepAwayState} KeepAwayAnswer
+ */
+
+/**
+ * A project's material limit as stored (R22), the latest set, or off before any.
+ * @typedef {Object} ProjectLimit
+ * @property {boolean | null} on
+ * @property {string[] | null} uses
+ * @property {string | null} reason
+ * @property {string | null} set_by
+ * @property {string | null} set_at
+ * @bound uses: each one of USE_KINDS, once, in USE_KINDS' order
+ */
+
+/**
+ * A project's material limit (R22), as its act and its read answer it.
+ * @typedef {{ok: true, project: string | null} & ProjectLimit} ProjectKeepAway
+ */
+
+/**
+ * The material limits that can bind an account (R15, R22).
+ * @typedef {Object} LimitOf
+ * @property {'group' | 'project'} scope
+ * @property {string} [project]
+ * @property {boolean | null} on
+ * @property {string[] | null} uses
+ * @property {string | null} reason
+ * @property {string | null} set_by
+ * @property {string | null} set_at
+ */
+
+/**
+ * An account's switches for each kind of use (R14), by switch name.
+ * @typedef {Object<string, boolean | string>} UseSwitches
+ * @bound one entry for each name of USE_SWITCHES; explore one of EXPLORE_VALUES, every other true or false
+ */
+
+/**
+ * One of a member's two accounts, as R17 answers it.
+ * @typedef {{held: boolean, uses: UseSwitches | null}} OneAccountUses
+ */
+
+/**
+ * One account's uses (R15, R17), the account named by its owner: the team's key, a project's account, or a member's own
+ * (her reference when held, else her sign-in). Every member null when the store cannot be read.
+ * @typedef {Object} AccountUsesOfAnswer
+ * @property {true} ok
+ * @property {string | null} owner
+ * @property {boolean | null} held
+ * @property {UseSwitches | null} uses
+ * @property {*} [kind] a project's account: apikey, signin, or null with none held
+ * @property {{reference: OneAccountUses, signin: OneAccountUses}} [accounts] a member's: each of her two accounts
+ * @property {true} [unreadable]
+ * @bound owner: group, project:<id> or member:<id>; any other answers held false, uses null
+ */
+
+/**
+ * One account's uses and the limits that can bind it, to its owners (R15).
+ * @typedef {AccountUsesOfAnswer & {keptAway: LimitOf[] | null}} AccountUsesAnswer
+ */
+
+/**
+ * One change of an account's settings (R16): what it set, and when and by whom.
+ * @typedef {{at: string, by: string | null, change: string, [detail: string]: *}} AccountChange
+ * @bound change: key_set, signin_set, switched, removed, use_set or limit_set
+ */
+
+/**
+ * An account's history (R16), capped as credentials R15's.
+ * @typedef {Object} AccountHistoryAnswer
+ * @property {true} ok
+ * @property {string | null} owner
+ * @property {number} count
+ * @property {number | null} limit
+ * @property {boolean} truncated
+ * @property {AccountChange[]} changes
+ * @property {true} [unreadable]
+ * @bound limit: whole number, 1 to 500
+ */
+
+/**
+ * What a member reads back of her own reference and sign-in (R2, R18, R19): never a secret.
+ * @typedef {Object} ReferenceState
+ * @property {true} ok
+ * @property {boolean} held
+ * @property {string | null} kind
+ * @property {string | null} set_at
+ * @property {boolean} suggestions
+ * @property {boolean} standing
+ * @property {UseSwitches | null} uses
+ * @property {SigninState} subscription
+ * @bound kind: one of ACCOUNT_KINDS
+ */
+
+/**
+ * Whether a member is connected through her subscription (R18, R19): connected only while its token is held.
+ * @typedef {Object} SigninState
+ * @property {boolean} connected
+ * @property {string | null} since
+ * @property {boolean} held
+ * @property {string} [valid_until] only when the sign-in stated how long it lasts
+ * @property {string} [refused_at] only when Anthropic refused it and none is held since
+ * @property {UseSwitches | null} uses
+ */
+
+/**
+ * The team's key as an administrator reads it (R6, R9).
+ * @typedef {Object} GroupKeyFacts
+ * @property {boolean} held
+ * @property {boolean} on
+ * @property {string | null} set_at
+ * @property {string | null} by
+ * @property {boolean} suggestions
+ * @property {boolean} standing
+ * @property {UseSwitches} uses the defaults before any act on the key
+ */
+
+/**
+ * A notice owed to a member (R8, R12), with its words.
+ * @typedef {{ok: true, due: boolean, text: *}} NoticeAnswer
+ */
+
+/**
+ * A notice recorded read (R8, R12); `already` when it was read before.
+ * @typedef {{ok: true, seen: true, already: boolean}} NoticeSeenAnswer
+ */
+
+/**
+ * An act an account serves (R3, R7, R11).
+ * @typedef {Object} Act
+ * @property {*} [kind] the kind of use; any other value is refused
+ * @property {string} [member]
+ * @property {string | null} [project]
+ * @bound kind: one of USE_KINDS but explore
+ */
+
+/**
+ * The account that serves an act, as `accountFor` answers it (R7), with its key for the one call: a member's own
+ * reference or sign-in, a project's key or its owner's sign-in, or the team's key.
+ * @typedef {Object} AccountForAnswer
+ * @property {true} ok
+ * @property {string} kind apikey, or signin for a sign-in's token
+ * @property {'member' | 'project' | 'group'} level
+ * @property {string} [project] level project
+ * @property {string} [member] a sign-in's member
+ * @property {string} key the secret, for the one call
+ * @bound kind: one of ACCOUNT_KINDS, or signin
+ */
+
+/**
+ * A member's own reference unsealed for one call (R3).
+ * @typedef {{ok: true, kind: string, secret: string}} ReferenceSecret
+ */
+
+/**
+ * R11's choice for an act, without unsealing (R25).
+ * @typedef {Object} AccountServing
+ * @property {'member' | 'project' | 'group'} level
+ * @property {string} kind apikey or signin
+ * @property {string} [project]
+ * @property {string} [member]
+ */
+
+/**
+ * Which account serves a member's act now (R25 `servingAccountOf`).
+ * @typedef {Object} ServingAccount
+ * @property {'member' | 'group'} level
+ * @property {true} [signin] a member's own sign-in
+ * @property {boolean} suggestions
+ * @property {boolean} standing
+ */
+
+/**
+ * A project's account to its owners (R10).
+ * @typedef {Object} ProjectAccountOwners
+ * @property {true} ok
+ * @property {boolean} held
+ * @property {*} kind apikey, signin, or null with none held
+ * @property {boolean} on
+ * @property {string | null} set_at
+ * @property {string | null} by
+ * @property {UseSwitches | null} uses
+ * @property {boolean} serving a sign-in serves only while its member is the project's only participant
+ */
+
+/**
+ * A project's sign-in account that stopped serving because another member joined (R13).
+ * @typedef {Object} Suspension
+ * @property {string} project
+ * @property {string} member
+ * @property {string} since
+ * @property {string} key
+ * @bound key: <project>|<member>|<since>
+ */
+
+/**
+ * What the listeners of `onAccountCleared` are told (R26).
+ * @typedef {Object} ClearedNotice
+ * @property {string} member
+ * @property {'reference' | 'signin'} account
+ * @property {string | null} by
+ * @property {'removed' | 'revoked' | 'refused' | 'disconnected'} why
+ * @property {boolean} reference_held whether a reference of the member's still serves her
+ */
+
+/**
+ * A registration answered (membership R81's refusals otherwise).
+ * @typedef {{ok: true, module: string}} Registered
+ */
+
+/**
+ * What the class is made with. The services are other modules' and state no kind.
+ * @typedef {Object} AiAccountsDeps
+ * @property {*} [sql] the Durable Object's SQL storage (`exec`); null only for KEPT_AWAY_UNREADABLE, built over no store
+ * @property {*} [core] record-core's service (`transact`, `declareTable`, `bundleInfo`)
+ * @property {*} [membership] membership's service (`memberFacts`, `isAdministrator`, `sight`, `projectAuthority`, `onRevoked`, ...)
+ * @property {string | null} [sealSecret] the Worker's seal secret
+ * @property {(() => number) | null} [now] the instance clock, in milliseconds
+ */
+
+/**
+ * The options of `aiAccountsOf`, read on the first call only.
+ * @typedef {Object} AiAccountsOptions
+ * @property {*} [record] record-core's service
+ * @property {*} [membership] membership's service
+ * @property {string | null} [sealSecret]
+ * @property {(() => number) | null} [now]
+ */
+
+/**
+ * A request's stamp: the actor (`by`) or the viewer, from the control plane's query.
+ * @typedef {string | null} Stamp
+ */
+
+/**
+ * The ops this module answers by name (R32), each with what its request carries (the body's fields and the control
+ * plane's stamps `by` and `viewer`, and some reads' fields, in the query) and what it answers.
+ * @typedef {{
+ *   subscriptiondisconnect: {req: {by: Stamp}, res: Refusal | {ok: true, disconnected: boolean}},
+ *   accountreferenceset: {req: {kind: string, secret: string, by: Stamp}, res: Promise<Refusal | {ok: true, kind: string, set_at: string}>},
+ *   accountreferenceremove: {req: {by: Stamp}, res: Refusal | {ok: true, removed: boolean}},
+ *   accountreference: {req: {member: Stamp, viewer: Stamp}, res: Refusal | ReferenceState},
+ *   groupkeyset: {req: {key: string, by: Stamp}, res: Promise<Refusal | MembershipRefusal | {ok: true, set_at: string}>},
+ *   groupkeyremove: {req: {by: Stamp}, res: MembershipRefusal | {ok: true, removed: boolean}},
+ *   groupkeyswitch: {req: {on?: boolean, by: Stamp}, res: MembershipRefusal | {ok: true, on: boolean}},
+ *   groupkeystate: {req: {viewer: Stamp}, res: MembershipRefusal | ({ok: true} & GroupKeyFacts) | {ok: true, on: boolean}},
+ *   groupkeynotice: {req: {viewer: Stamp}, res: NoticeAnswer},
+ *   groupkeynoticeseen: {req: {by: Stamp}, res: Refusal | NoticeSeenAnswer},
+ *   aikeepaway: {req: {on?: boolean, uses?: string[] | null, reason?: string | null, by: Stamp}, res: Refusal | MembershipRefusal | KeepAwayAnswer},
+ *   aikeepawaystate: {req: {}, res: KeepAwayState},
+ *   accountusesset: {req: {owner: string, switch: string, on: boolean | string, by: Stamp}, res: Refusal | MembershipRefusal | {ok: true, owner: string | null, switch: string | null, on?: boolean | string}},
+ *   accountuses: {req: {owner: string, viewer: Stamp}, res: Refusal | MembershipRefusal | AccountUsesAnswer},
+ *   accounthistory: {req: {owner: string, viewer: Stamp, limit?: string}, res: Refusal | MembershipRefusal | AccountHistoryAnswer},
+ *   projectkeyset: {req: {project: string, key: string, by: Stamp}, res: Promise<Refusal | MembershipRefusal | {ok: true, project: string | null, kind: 'apikey', set_at: string}>},
+ *   projectsigninset: {req: {project: string, by: Stamp}, res: Refusal | MembershipRefusal | {ok: true, project: string | null, kind: 'signin', set_at: string}},
+ *   projectaccountremove: {req: {project: string, by: Stamp}, res: MembershipRefusal | {ok: true, removed: boolean}},
+ *   projectaccountswitch: {req: {project: string, on?: boolean, by: Stamp}, res: MembershipRefusal | {ok: true, on: boolean}},
+ *   projectaccountstate: {req: {project: string, viewer: Stamp}, res: MembershipRefusal | ProjectAccountOwners | {ok: true, on: boolean, serving: boolean}},
+ *   projectkeynotice: {req: {project: string, viewer: Stamp}, res: NoticeAnswer},
+ *   projectkeynoticeseen: {req: {project: string, by: Stamp}, res: Refusal | MembershipRefusal | NoticeSeenAnswer},
+ *   projectaikeepaway: {req: {project: string, on?: boolean, uses?: string[] | null, reason?: string | null, by: Stamp}, res: Refusal | MembershipRefusal | ProjectKeepAway},
+ *   projectaikeepawaystate: {req: {project: string, viewer: Stamp}, res: MembershipRefusal | ProjectKeepAway}
+ * }} AiAccountsOps
+ * @optable
+ * @bound by: the control plane's stamp, read from the query after the body, never the body's own
+ * @bound accountreferenceset.kind: one of ACCOUNT_KINDS
+ * @bound accounthistory.limit: a whole number; at most 500, 200 when absent
+ * @bound projectkeynoticeseen.project: the body's when it is a string, else the query's
+ */
+
+/**
+ * The handlers of the ops, one per entry of AiAccountsOps, each reading the request it was made over.
+ * @typedef {{[K in keyof AiAccountsOps]: () => AiAccountsOps[K]['res']}} AiAccountsHandlers
+ */
+
+/**
+ * The declaration of one op the screens send (R35; op-declarations R80).
+ * @typedef {Object} DeclaredOp
+ * @property {string[]} classes
+ * @property {string[]} machineClasses
+ * @property {boolean} mutating
+ * @property {'substrate' | 'reasoned' | 'credential' | 'caller-owned'} weight
+ * @property {{accepts: string[], requires: string[]}} fields
+ * @property {*} description the op's sentence, from setup-words' localize
+ */
+
+/* ----- the rows of this module's tables (R28) ----- */
+
+/**
+ * A member's own reference (R1, R2): the secret only sealed.
+ * @typedef {Object} ReferenceRow
+ * @property {string} member_id
+ * @property {string} kind
+ * @property {string} sealed
+ * @property {string} iv
+ * @property {string} set_at
+ * @property {number} suggestions
+ * @property {number} standing
+ * @property {number} use_ask
+ * @property {number} use_draft
+ * @property {number} use_run
+ * @property {string} explore
+ * @property {number} use_enquire
+ * @property {number} use_read
+ * @property {number} use_transcribe
+ * @property {number} use_account
+ * @bound kind: one of ACCOUNT_KINDS
+ * @bound suggestions, standing and the use_ columns: 0 or 1
+ * @bound explore: one of EXPLORE_VALUES
+ * @storedrows account_references
+ */
+
+/**
+ * The team's one key (R5, R9): the key only sealed; a row may stand with no key, holding the switches.
+ * @typedef {Object} GroupKeyRow
+ * @property {1} id
+ * @property {string | null} sealed
+ * @property {string | null} iv
+ * @property {number} is_on
+ * @property {string | null} set_by
+ * @property {string | null} set_at
+ * @property {number} suggestions
+ * @property {number} standing
+ * @property {number} use_ask
+ * @property {number} use_draft
+ * @property {number} use_run
+ * @property {string} explore
+ * @property {number} use_enquire
+ * @property {number} use_read
+ * @property {number} use_transcribe
+ * @property {number} use_account
+ * @bound is_on, suggestions, standing and the use_ columns: 0 or 1
+ * @bound explore: one of EXPLORE_VALUES
+ * @storedrows group_key
+ */
+
+/**
+ * One act on the team's key (R5), never the key.
+ * @typedef {{seq: number, act: string, detail: string | null, actor: string, at: string}} GroupKeyActRow
+ * @storedrows group_key_acts
+ */
+
+/**
+ * The team key's notice read by a member (R8).
+ * @typedef {{member_id: string, seen_at: string}} GroupKeyNoticeRow
+ * @storedrows group_key_notices
+ */
+
+/**
+ * One set of the team's material limit (R20, R22).
+ * @typedef {{seq: number, is_on: number, reason: string | null, set_by: string, set_at: string, uses: string | null}} KeepAwayRow
+ * @storedrows ai_keep_away
+ */
+
+/**
+ * A member's sign-in (R18, R19): the token only sealed; a fact with none held is not connected.
+ * @typedef {Object} SigninRow
+ * @property {string} member_id
+ * @property {string} since
+ * @property {number} use_ask
+ * @property {number} use_draft
+ * @property {number} use_run
+ * @property {number} standing
+ * @property {number} suggestions
+ * @property {string} explore
+ * @property {number} use_enquire
+ * @property {number} use_read
+ * @property {number} use_transcribe
+ * @property {number} use_account
+ * @property {string | null} sealed
+ * @property {string | null} iv
+ * @property {string | null} valid_until
+ * @property {string | null} refused_at
+ * @bound standing, suggestions and the use_ columns: 0 or 1
+ * @bound explore: one of EXPLORE_VALUES
+ * @storedrows subscription_connections
+ */
+
+/**
+ * A project's one account (R10): a key only sealed, or its owner's sign-in, holding no secret.
+ * @typedef {Object} ProjectAccountRow
+ * @property {string} project_id
+ * @property {string} kind
+ * @property {string | null} sealed
+ * @property {string | null} iv
+ * @property {string | null} member_id
+ * @property {number} is_on
+ * @property {string} set_by
+ * @property {string} set_at
+ * @property {number} use_ask
+ * @property {number} use_draft
+ * @property {number} use_run
+ * @property {number} standing
+ * @property {number} suggestions
+ * @property {string} explore
+ * @property {number} use_enquire
+ * @property {number} use_read
+ * @property {number} use_transcribe
+ * @property {number} use_account
+ * @bound kind: apikey or signin
+ * @bound is_on, standing, suggestions and the use_ columns: 0 or 1
+ * @bound explore: one of EXPLORE_VALUES
+ * @storedrows project_accounts
+ */
+
+/**
+ * One act on a project's account (R10), never the key.
+ * @typedef {{seq: number, project_id: string, act: string, detail: string | null, actor: string, at: string}} ProjectAccountActRow
+ * @storedrows project_account_acts
+ */
+
+/**
+ * A project key's notice read by a member (R12).
+ * @typedef {{member_id: string, project_id: string, seen_at: string}} ProjectKeyNoticeRow
+ * @storedrows project_key_notices
+ */
+
+/**
+ * One set of a project's material limit (R22).
+ * @typedef {{seq: number, project_id: string, is_on: number, uses: string | null, reason: string | null, set_by: string, set_at: string}} ProjectKeepAwayRow
+ * @storedrows project_keep_away
+ */
+
+/**
+ * One change of an account's settings (R16).
+ * @typedef {{seq: number, owner: string, project_id: string | null, at: string, by: string | null, change: string, detail: string | null, origin: string | null}} ChangeRow
+ * @storedrows account_changes
+ */
 /* R1 (K1502, K1547): the kind of a member's own Claude account reference: `apikey` (the member's own API key), held,
    sealed and used for that member alone. (T38; N708's remainder, K2200) `subscription`, a stored `claude setup-token`
    token, is retired: a member's subscription is reached through the hosted Claude Code's own sign-in (R18, R7), never
@@ -72,12 +558,14 @@ const ROOT = Membership.ROOT_ADMIN;
 export class AiAccounts {
   /* R39 (fix round 10, STORE-REQUEST #5; K5192): `now` is the instance clock handed in (a function of milliseconds), read
      before the store's environment; `env` is set by `aiAccountsOps` from the store's environment (`BIO_NOW_MS`). */
+  /** @param {AiAccountsDeps} [deps] */
   constructor({ sql, core = null, membership = null, sealSecret = null, now = null } = {}) {
     this.sql = sql;
     this.core = core;
     this.membership = membership;
     this.#sealSecret = typeof sealSecret === "string" && sealSecret !== "" ? sealSecret : null;
     this.now = typeof now === "function" ? now : null;
+    /** @type {Object<string, *> | null} the store's environment, set by aiAccountsOps */
     this.env = null;
   }
   #sealSecret;
@@ -116,6 +604,7 @@ export class AiAccounts {
    * notice is called after the act's writes, in the caller's transaction), each a change (R16), each told through
    * R26. Membership ignores a listener's answer and survives its throw; registered once (a second registration is
    * refused through membership's R81, so `start` is idempotent through `aiAccountsOf`). */
+  /** @returns {{revoked: *}} membership's answer to the registration */
   start() {
     const revoked = this.membership.onRevoked("ai-accounts", (notice) => this.#memberRevoked(notice));
     return { revoked };
@@ -129,6 +618,10 @@ export class AiAccounts {
   /* This module's tables, at every boot, idempotent: the additive columns an older store lacks, then every table and
      index created if absent, then the retired references removed and the history carried, then R28's declarations.
      Run by the host inside its boot, before credentials' own (map §3). */
+  /**
+   * @returns {void}
+   * @throws {Error} when record-core refuses the tables' declaration
+   */
   migrate() {
     const cols = (t) => [...this.sql.exec(`PRAGMA table_info(${t})`)].map((r) => r.name);
     for (const [table, column, decl] of AI_ACCOUNTS_ADDITIVE_COLUMNS) {
@@ -154,6 +647,10 @@ export class AiAccounts {
   /* R28, R29, through record-core's `declareTable` (its R21): every table declared explicitly with its classes. A
      refusal is thrown: a purge that silently cleared an account would end a member's assistant as a side effect of
      resetting the corpus, and an export that carried a key would publish it. */
+  /**
+   * @returns {boolean} false when already declared
+   * @throws {Error} when record-core refuses the declaration
+   */
   declareTables() {
     if (this.#declared) return false;
     const answer = this.core.declareTable("ai-accounts",
@@ -180,6 +677,7 @@ export class AiAccounts {
     try { return this.membership.memberFacts(memberId) || null; } catch { return null; }
   }
 
+  /** @returns {MembershipRefusal | null} */
   #adminBar(by, act) {
     const who = AiAccounts.#memberOf(by);
     return who !== null && !isMachineIdentity(by) && this.membership.isAdministrator(who) ? null : notAnAdmin(by ?? null, act);
@@ -198,6 +696,13 @@ export class AiAccounts {
     return id !== "" ? id : null;
   }
 
+  /**
+   * @param {*} table
+   * @param {string} code
+   * @param {*} detail
+   * @param {Object<string, *>} [extra]
+   * @returns {Refusal}
+   */
   static #row(table, code, detail, extra) {
     const r = table[code];
     return { ok: false, reason: code, code, check: r.check, translation: r.translation, detail, ...(extra || {}) };
@@ -207,6 +712,7 @@ export class AiAccounts {
      notice's acknowledgement (R8). Answers null when `by` is that member's own act and the member is active. A
      `member` naming no member of the roster ('organisation', a project, a machine class) is refused as any principal
      but the acting member is: NOT_YOUR_ACCOUNT, or ACCOUNT_MEMBER_NOT_ACTIVE when it names the actor themself (K1756). */
+  /** @returns {Refusal | null} */
   #accountBar(member, by) {
     const refuse = (code, detail) => AiAccounts.#row(AI_ACCOUNT_CHECKS, code, detail);
     /* DEC-49 REGION is-account-own-act */
@@ -232,6 +738,7 @@ export class AiAccounts {
   /* R3, R4, `credentials` R27, `credentials` R32, R7: no account serves this member (R7's last branch), or, for R3 and R4 (`own`), the
      member holds no reference of their own; (T40; R14) for `accountUsesSet`, the owner named holds no account
      (`member`: neither a reference nor a sign-in; `project`: the project holds none). */
+  /** @param {*} member @param {'served' | 'own' | 'member' | 'project' | true} [scope] @returns {Refusal} */
   #noAccount(member, scope = "served") {
     /* DEC-49 REGION is-account-held */
     return AiAccounts.#row(AI_ACCOUNT_CHECKS, "NO_ACCOUNT", scope === true || scope === "own"
@@ -275,6 +782,7 @@ export class AiAccounts {
   static #USES_COLUMNS = USE_SWITCHES.map((k) => AiAccounts.#USE_COLUMN[k]).join(", ");
 
   /* An account's switches from its row, as R14 names them, in USE_SWITCHES' order. */
+  /** @returns {UseSwitches} */
   static #usesOf(r) {
     return Object.fromEntries(USE_SWITCHES.map((k) => [k, k === "explore"
       ? (EXPLORE_VALUES.includes(r?.explore) ? r.explore : "no") : !!r?.[AiAccounts.#USE_COLUMN[k]]]));
@@ -316,6 +824,13 @@ export class AiAccounts {
      is held, as R9's); a project's by one of its owners (R10's refusals), while it holds an account; a member's own by
      that member (R1's refusals), on the account of theirs that would serve them: their reference when held, else their
      sign-in. Refusals in order: the owner's, UNKNOWN_SWITCH, SWITCH_VALUE_INVALID, NO_ACCOUNT, each writing nothing. */
+  /**
+   * @param {{owner?: string | null, switch?: string | null, on?: boolean | string, by?: string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | {ok: true, owner: string | null, switch: string | null, on?: boolean | string}}
+   * @bound owner: group, project:<id> or member:<id>
+   * @bound switch: one of USE_SWITCHES
+   * @bound on: explore one of EXPLORE_VALUES, every other switch true or false
+   */
   accountUsesSet({ owner = null, switch: name = null, on, by = null } = {}) {
     const t = this.#usesOwner(owner, by);
     if (t.refusal) return t.refusal;
@@ -415,6 +930,12 @@ export class AiAccounts {
   /* R1: one reference for `member`, of the one kind (`apikey`; `subscription` refused since T38), replacing any earlier
      one, by that member's own act.
      Answers `{ok, kind, set_at}` and never the secret. A replacement keeps the member's switches (R4); only removal turns them off. */
+  /**
+   * @param {{member?: string | null, kind?: *, secret?: string | null, by?: string | null}} [args]
+   * @returns {Promise<Refusal | {ok: true, kind: string, set_at: string}>} never the secret
+   * @bound kind: one of ACCOUNT_KINDS
+   * @bound secret: not blank
+   */
   async accountReferenceSet({ member = null, kind = null, secret = null, by = null } = {}) {
     const bar = this.#accountBar(member, by);
     if (bar) return bar;
@@ -453,9 +974,15 @@ export class AiAccounts {
    * control-plane R65's refusal of a sign-in's `start` answers through it. Fail closed: anything but `shown: true`, a
    * throw, or an answer that is not one (a promise among them) is the refusal. With none registered nothing is asked
    * and nothing is held (a module test with no instance-setup). */
+  /** @type {{module: string, fn: (args: {member: string | null}) => *} | null} */
   #disclosureSource = null;   // {module, fn}
 
   /* R23: one registration, whoever makes it; its refusals are membership's R81, naming the holder. */
+  /**
+   * @param {string} module the module that registers
+   * @param {(args: {member: string | null}) => *} fn answers `{shown: true}` when the member was shown the disclosure
+   * @returns {MembershipRefusal | Registered}
+   */
   registerDisclosureRead(module, fn) {
     const refused = listenerRefusal(this.#disclosureSource, module, fn);
     if (refused) return refused;
@@ -466,6 +993,10 @@ export class AiAccounts {
   /* R23: an in-plane read, reached by no route and answered to no viewer: null when the registered read answers
      `shown: true` for `member` (or none is registered), else the one DISCLOSURE_DUE refusal. Writes nothing; never
      throws. */
+  /**
+   * @param {{member?: string | null}} [args]
+   * @returns {Refusal | null} DISCLOSURE_DUE, with `member`
+   */
   disclosureDue({ member = null } = {}) {
     const source = this.#disclosureSource;
     if (source === null) return null;
@@ -484,6 +1015,10 @@ export class AiAccounts {
   /* R1, R4, R26: the member removes their reference, which turns both switches off; with none, `removed: false`. In the
      same act R26's listeners are told (`credentials` R73 ends every standing question's grant minted for her, its R32),
      as credentials' own removal ended them, whether or not a reference was held. */
+  /**
+   * @param {{member?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | {ok: true, removed: boolean}}
+   */
   accountReferenceRemove({ member = null, by = null } = {}) {
     const bar = this.#accountBar(member, by);
     if (bar) return bar;
@@ -500,6 +1035,10 @@ export class AiAccounts {
   }
 
   /* R2: what the member may read back of their own reference, to them alone; never the secret. */
+  /**
+   * @param {{member?: string | null, viewer?: string | null}} [args]
+   * @returns {Refusal | ReferenceState}
+   */
   accountReferenceState({ member = null, viewer = null } = {}) {
     const id = AiAccounts.#memberOf(member);
     if (id === null || typeof member !== "string" || AiAccounts.#memberOf(viewer) !== id || isMachineIdentity(viewer))
@@ -622,8 +1161,10 @@ export class AiAccounts {
 
   /* R22, R15: every material limit that can bind the account, on or off: the group's, and a project's own for its
      account. */
+  /** @returns {LimitOf[]} */
   #limitsFor(owner) {
     const g = this.aiKeepAwayState();
+    /** @type {LimitOf[]} */
     const out = [{ scope: "group", on: g.on, uses: g.uses, reason: g.reason, set_by: g.set_by, set_at: g.set_at }];
     if (owner.startsWith("project:")) {
       let lim;
@@ -638,6 +1179,11 @@ export class AiAccounts {
   /* R15 `accountUses` (`op=accountuses`): one account's uses and keep-aways, to its owners alone: `{owner, held,
      uses, keptAway}`, the uses as `#usesAnswer` reads them. Never a key; writes nothing; never throws (a store that
      cannot be read answers `unreadable: true`). */
+  /**
+   * @param {{owner?: string | null, viewer?: string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | AccountUsesAnswer}
+   * @bound owner: group, project:<id> or member:<id>
+   */
   accountUses({ owner = null, viewer = null } = {}) {
     try {
       const bar = this.#ownerBar(owner, viewer);
@@ -653,6 +1199,10 @@ export class AiAccounts {
      does not own (ai-use R3, `credentials` R6, `credentials` R9). An `owner` not spelled as R14's answers `held: false, uses: null`; a store that
      cannot be read answers `held: null, uses: null, unreadable: true`, never a default (no switch reads as on); a revoked
      member's `member:<id>` answers `held: false, uses: null` (K2620). Never a key or a digest; writes nothing; never throws. */
+  /**
+   * @param {{owner?: string | null}} [args]
+   * @returns {AccountUsesOfAnswer}
+   */
   accountUsesOf({ owner = null } = {}) {
     const said = typeof owner === "string" ? owner : null;
     try {
@@ -670,6 +1220,7 @@ export class AiAccounts {
   }
 
   /* R14, R17: `group`, `project:<id>` or `member:<id>`, the id non-empty, the member named once and no machine. */
+  /** @returns {owner is string} */
   static #usesOwnerSpelled(owner) {
     if (owner === "group") return true;
     if (typeof owner !== "string") return false;
@@ -683,6 +1234,7 @@ export class AiAccounts {
      on it); a project's account also its `kind`. For `member:<id>`, `uses` is the account `accountUsesSet` sets (their
      reference when held, else their sign-in) and `accounts` answers each of the two. Never a key; throws when the
      store cannot be read, for its caller to answer `unreadable`. */
+  /** @returns {AccountUsesOfAnswer} */
   #usesAnswer(owner) {
     if (owner === "group") {
       const f = this.#groupKeyFacts();
@@ -704,6 +1256,11 @@ export class AiAccounts {
   /* R16 `accountHistory` (`op=accounthistory`): the account's changes, to its owners alone (R15's), in the order made,
      each `{at, by, change, …}` with what it set; capped as `credentials` R15's (default 200, at most 500) with a measured
      `truncated`. Writes nothing; never throws. */
+  /**
+   * @param {{owner?: string | null, viewer?: string | null, limit?: number | string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | AccountHistoryAnswer}
+   * @bound limit: 200 when absent or not a positive number, at most 500
+   */
   accountHistory({ owner = null, viewer = null, limit = null } = {}) {
     try {
       const bar = this.#ownerBar(owner, viewer);
@@ -734,6 +1291,10 @@ export class AiAccounts {
    * it, `{kind: "signin", level: "member", member, key}`. */
 
   /* R18: an in-plane call, reached by no route and answered to no viewer. */
+  /**
+   * @param {{member?: string | null}} [args] the member alone; a call carrying any other member is refused
+   * @returns {Refusal | {ok: true, member: string, since: string}}
+   */
   subscriptionConnected(args = {}) {
     const carried = args && typeof args === "object" ? Object.keys(args).filter((k) => k !== "member" && args[k] !== undefined) : [];
     /* DEC-49 REGION is-subscription-fact */
@@ -768,6 +1329,12 @@ export class AiAccounts {
    * founder, once claimed, holds one as a member does (C5, for Bob's own testing, D11). */
 
   /* R19: an in-plane call, reached by no route: the door's, after a sign-in's `code` answer. */
+  /**
+   * @param {{member?: string | null, token?: string | null, validFor?: string | number | null}} [args]
+   * @returns {Promise<Refusal | {ok: true, since: string}>} never the token
+   * @bound token: SIGNIN_TOKEN_LENGTH, 20 to 2,000 characters
+   * @bound validFor: a whole number of days or years ("30 days", "1 year"; a bare number is days); any other holds no end
+   */
   async subscriptionTokenHold({ member = null, token = null, validFor = null } = {}) {
     const id = AiAccounts.#memberOf(member);
     if (id === null || isMachineIdentity(member) || isMachineIdentity(id) || !this.#holderActive(id))
@@ -809,6 +1376,10 @@ export class AiAccounts {
      projects' sign-in accounts cleared; her own switches stay for her next sign-in. (T50; R26, N1060, K3218, K3224) It
      tells R26's listeners once, inside the act, as a disconnection does (`why: "refused"`, `by: null`); a call for a member
      with none held drops nothing, records nothing and tells no one. Answers `{ok: true, dropped}`; never throws. */
+  /**
+   * @param {{member?: string | null}} [args]
+   * @returns {{ok: true, dropped: boolean} | {ok: false, dropped: false, unreadable: true}}
+   */
   subscriptionTokenRefused({ member = null } = {}) {
     try {
       const id = AiAccounts.#memberOf(member);
@@ -828,6 +1399,7 @@ export class AiAccounts {
 
   /* R19: a held sign-in's token, unsealed for the one call it serves, `{key}`; or `{refusal}`: SIGNIN_NOT_HELD with none
      held, ACCOUNT_SEAL_UNAVAILABLE when it does not open. */
+  /** @returns {Promise<{refusal: Refusal, key?: undefined} | {key: string, refusal?: undefined}>} */
   async #signinKey(id) {
     const r = this.#one(`SELECT sealed, iv FROM subscription_connections WHERE member_id=? AND sealed IS NOT NULL`, id);
     if (!r) return { refusal: AiAccounts.#signinNotHeld(id) };
@@ -845,6 +1417,10 @@ export class AiAccounts {
   }
 
   /* R18: the member's own act (R1's refusals) clears it; so does their revocation (R27). */
+  /**
+   * @param {{member?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | {ok: true, disconnected: boolean}}
+   */
   subscriptionDisconnect({ member = null, by = null } = {}) {
     const bar = this.#accountBar(member, by);
     if (bar) return bar;
@@ -872,6 +1448,7 @@ export class AiAccounts {
   }
 
   /* R3, R7: a member's own reference, unsealed, or a refusal (ACCOUNT_SEAL_UNAVAILABLE); null when none is held. */
+  /** @returns {Promise<Refusal | ReferenceSecret | null>} */
   async #ownReference(id) {
     const r = this.#reference(id, "kind, sealed, iv");
     if (!r) return null;
@@ -885,6 +1462,10 @@ export class AiAccounts {
 
   /* R3: unseals the member's reference only for that member's own ask, run or standing question, for the one call it
      serves; the caller keeps nothing (agent-model R8). Kept for its callers until they move to `accountFor` (R7). */
+  /**
+   * @param {{member?: string | null, act?: Act | null}} [args]
+   * @returns {Promise<Refusal | ReferenceSecret>}
+   */
   async accountReferenceFor({ member = null, act = null } = {}) {
     /* R7 (DEC-172): no assistant while the group keeps its material away; (T40; R22) for the act's use */
     const away = this.aiKeptAway({ use: act && typeof act === "object" ? act.kind : null });
@@ -915,6 +1496,7 @@ export class AiAccounts {
   }
 
   /* Held, and on only while held and switched on. */
+  /** @returns {GroupKeyFacts} */
   #groupKeyFacts() {
     const r = this.#groupKeyRow();
     const held = !!(r && r.sealed);
@@ -935,6 +1517,11 @@ export class AiAccounts {
 
   /* R5: one key for the group's copy, replacing any earlier one; off when first set (a replacement keeps the switch
      as it was). Answers `{ok, set_at}`, never the key. */
+  /**
+   * @param {{key?: string | null, by?: string | null}} [args]
+   * @returns {Promise<Refusal | MembershipRefusal | {ok: true, set_at: string}>} never the key
+   * @bound key: not blank
+   */
   async groupKeySet({ key = null, by = null } = {}) {
     const bar = this.#adminBar(by, "setting the team's Anthropic API key");
     if (bar) return bar;
@@ -959,6 +1546,10 @@ export class AiAccounts {
 
   /* R5, R9: removes the key, which switches it off and turns both its switches off; (T40; R9) every R14 switch of
      it; with none, `removed: false`. */
+  /**
+   * @param {{by?: string | null}} [args]
+   * @returns {MembershipRefusal | {ok: true, removed: boolean}}
+   */
   groupKeyRemove({ by = null } = {}) {
     const bar = this.#adminBar(by, "removing the team's Anthropic API key");
     if (bar) return bar;
@@ -972,6 +1563,10 @@ export class AiAccounts {
   }
 
   /* R5: switches the key on or off; only `true` is on, and it is on only while a key is held. */
+  /**
+   * @param {{on?: boolean, by?: string | null}} [args] only true is on
+   * @returns {MembershipRefusal | {ok: true, on: boolean}}
+   */
   groupKeySwitch({ on = false, by = null } = {}) {
     const bar = this.#adminBar(by, "switching the team's Anthropic API key");
     if (bar) return bar;
@@ -989,6 +1584,10 @@ export class AiAccounts {
   /* R6, R9: an active administrator reads `{held, on, set_at, by, suggestions, standing}` (T40: and `uses`, every R14
      switch); any other active member
      `{on}`; anyone else is refused as a non-administrator. Never the key; writes nothing. */
+  /**
+   * @param {{viewer?: string | null}} [args]
+   * @returns {MembershipRefusal | ({ok: true} & GroupKeyFacts) | {ok: true, on: boolean}}
+   */
   groupKeyState({ viewer = null } = {}) {
     const id = AiAccounts.#memberOf(viewer);
     const f = this.#groupKeyFacts();
@@ -1000,6 +1599,7 @@ export class AiAccounts {
 
   /* R9 (N674; K1798): the group key's switches, for `ai-runs`' dispatch of a `level: "group"` account; an in-plane
      read reached by no route and answered to no viewer. Never the key; writes nothing; never throws. */
+  /** @returns {{on: boolean, suggestions: boolean, standing: boolean}} */
   groupKeySwitches() {
     try {
       const f = this.#groupKeyFacts();
@@ -1012,6 +1612,10 @@ export class AiAccounts {
   static GROUP_KEY_NOTICE_TEXT = word("ai-accounts.group_key_notice_text");
 
   /* R8: `{due, text}` for a member until their own act records that they have read it; writes nothing. */
+  /**
+   * @param {{member?: string | null}} [args]
+   * @returns {NoticeAnswer}
+   */
   groupKeyNotice({ member = null } = {}) {
     const id = AiAccounts.#memberOf(member);
     const seen = id !== null && !!this.#one(`SELECT member_id FROM group_key_notices WHERE member_id=?`, id);
@@ -1019,6 +1623,10 @@ export class AiAccounts {
   }
 
   /* R8: the member's own act (R1's refusals), recorded once with its instant; again answers `already: true`. */
+  /**
+   * @param {{member?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | NoticeSeenAnswer}
+   */
   groupKeyNoticeSeen({ member = null, by = null } = {}) {
     const bar = this.#accountBar(member, by);
     if (bar) return bar;
@@ -1040,6 +1648,7 @@ export class AiAccounts {
      the switches that govern it (R4, R9, R14). (T41; N796, Bob K2425) A member's own sign-in (R18) serves at level
      'member' and is governed by its own switches (R14), as a reference is: T38's refusal of a sign-in (K2275) is
      lifted. */
+  /** @returns {ServingAccount | null} */
   #servingAccount(id) {
     const own = this.#reference(id, "suggestions, standing");
     if (own) return { level: "member", suggestions: !!own.suggestions, standing: !!own.standing };
@@ -1059,6 +1668,10 @@ export class AiAccounts {
      nothing; called only by the modules that run the assistant. (T40; R11) `act` takes `project`, and the cascade
      begins with that project's account, `{kind: "apikey", level: "project", project, key}` or `{kind: "signin", level:
      "project", project, member, key}`; the account the cascade chooses is the one used (#resolve). */
+  /**
+   * @param {{member?: string | null, act?: Act | null}} [args]
+   * @returns {Promise<Refusal | MembershipRefusal | AccountForAnswer>}
+   */
   async accountFor({ member = null, act = null } = {}) {
     const away = this.aiKeptAway({ use: act && typeof act === "object" ? act.kind : null });
     if (away) return away;
@@ -1107,6 +1720,7 @@ export class AiAccounts {
      joined PROJECT_ACT_NOT_A_PARTICIPANT; the project's material limit (R22) is asked before its account. A key that
      pays for others' acts serves only an active member who has read its notice (R8, R12), asked when `notice`.
      Answers `{refusal}`, or `{level, kind, project?, member?, row?}`. Writes nothing. */
+  /** @returns {{refusal: Refusal | MembershipRefusal} | {refusal?: undefined, level: 'member' | 'project' | 'group', kind: string, project?: string, member?: string, row?: *}} */
   #resolve(id, use, project, { notice = true } = {}) {
     if (project !== null) {
       const bar = this.#participantBar(project, id, "asking the assistant in a project");
@@ -1155,6 +1769,7 @@ export class AiAccounts {
 
   /* R21: the latest set, or off before any. Never throws: a setting that cannot be read is answered `on: null`, not
      known, which R7 reads as kept away (a failure never sends material out). */
+  /** @returns {KeepAwayState} */
   aiKeepAwayState() {
     try {
       const r = this.#one(`SELECT is_on, reason, set_by, set_at, uses FROM ai_keep_away ORDER BY seq DESC LIMIT 1`);
@@ -1204,6 +1819,12 @@ export class AiAccounts {
   /* R20 (`op=aikeepaway`): an active administrator's act. `on: true` needs a reason of 1 to 2,000 characters, not
      blank; a reason given with `on: false` is kept under the same bounds. Each refusal writes nothing. (T40; R22) It
      takes `uses`, the kinds of use the limit covers (all when absent). */
+  /**
+   * @param {{on?: boolean, uses?: string[] | null, reason?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | KeepAwayAnswer}
+   * @bound reason: 1 to 2,000 characters, not blank, when on; when given with on false, at most 2,000
+   * @bound uses: absent, or a non-empty list of USE_KINDS entries, each once
+   */
   aiKeepAwaySet({ on = false, uses = null, reason = null, by = null } = {}) {
     const bar = this.#adminBar(by, localize("ai-accounts.index.keeping_the_teams_material_away", "keeping the team's material away from every assistant"));
     if (bar) return bar;
@@ -1232,6 +1853,10 @@ export class AiAccounts {
      throws. (T48; R34, N1041) Whatever part of a limit cannot be read, or an error inside the read, it answers a
      refusal with its row, never a throw: an error the reads below do not catch answers `KEPT_AWAY_UNREADABLE`, the
      unreadable form of this one site's own answer. */
+  /**
+   * @param {{project?: string | null, use?: string | null}} [args]
+   * @returns {Refusal | null} AI_KEPT_AWAY or PROJECT_AI_KEPT_AWAY, with keep_away; null when no limit covers the use
+   */
   aiKeptAway({ project = null, use = null } = {}) {
     try {
       let st;
@@ -1256,6 +1881,7 @@ export class AiAccounts {
 
   /* R22: a project's material limit, the latest set, or off before any. Throws when it cannot be read: its caller
      fails closed. */
+  /** @returns {ProjectLimit} */
   #projectLimit(project) {
     const r = this.#one(`SELECT is_on, uses, reason, set_by, set_at FROM project_keep_away WHERE project_id=?
                          ORDER BY seq DESC LIMIT 1`, project);
@@ -1321,6 +1947,7 @@ export class AiAccounts {
   }
 
   /* Sight first (`credentials` R44, `credentials` R77): NONE answers as absent, EXISTENCE C-70.1; null when the caller sees the project. */
+  /** @returns {MembershipRefusal | null} */
   #unseen(project, viewer) {
     const s = this.#sightOf(project, viewer);
     if (s === Membership.SIGHT_FULL) return null;
@@ -1330,6 +1957,7 @@ export class AiAccounts {
 
   /* R10: an act on a project's AI settings is an owner's (membership R54, `credentials` R122); a machine credential, the operator's
      token or an unstamped call is refused the same way. */
+  /** @returns {MembershipRefusal | null} */
   #projectOwnerBar(project, by, act) {
     const id = AiAccounts.#memberOf(by);
     if (by === null || by === undefined || by === "" || isMachineIdentity(by) || id === null)
@@ -1386,6 +2014,11 @@ export class AiAccounts {
   /* R10 `projectKeySet`: an owner holds an Anthropic API key for the project, replacing any earlier account; off when
      first set (a key replacing a key keeps its switches; replacing a sign-in, it is a new account). Answers
      `{ok, project, kind, set_at}`, never the key. */
+  /**
+   * @param {{project?: string | null, key?: string | null, by?: string | null}} [args]
+   * @returns {Promise<Refusal | MembershipRefusal | {ok: true, project: string | null, kind: 'apikey', set_at: string}>} never the key
+   * @bound key: not blank
+   */
   async projectKeySet({ project = null, key = null, by = null } = {}) {
     const bar = this.#projectOwnerBar(project, by, "setting a project's Anthropic API key");
     if (bar) return bar;
@@ -1414,6 +2047,10 @@ export class AiAccounts {
   /* R10 `projectSigninSet`: the acting owner's own sign-in becomes the project's account, replacing any earlier one;
      refused PROJECT_NOT_SOLE_MEMBER while the project has any other participant (owners included; and when who
      participates cannot be read), and SIGNIN_NOT_CONNECTED when the owner is not connected through their subscription. */
+  /**
+   * @param {{project?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | {ok: true, project: string | null, kind: 'signin', set_at: string}}
+   */
   projectSigninSet({ project = null, by = null } = {}) {
     const bar = this.#projectOwnerBar(project, by, "making your sign-in a project's Claude account");
     if (bar) return bar;
@@ -1443,6 +2080,10 @@ export class AiAccounts {
   }
 
   /* R10 `projectAccountRemove`: removes whichever account is held; with none, `removed: false`. */
+  /**
+   * @param {{project?: string | null, by?: string | null}} [args]
+   * @returns {MembershipRefusal | {ok: true, removed: boolean}}
+   */
   projectAccountRemove({ project = null, by = null } = {}) {
     const bar = this.#projectOwnerBar(project, by, "removing a project's Claude account");
     if (bar) return bar;
@@ -1456,6 +2097,10 @@ export class AiAccounts {
 
   /* R10 `projectAccountSwitch`: switches whichever account is held on or off; only `true` is on, and it is on only
      while an account is held. */
+  /**
+   * @param {{project?: string | null, on?: boolean, by?: string | null}} [args] only true is on
+   * @returns {MembershipRefusal | {ok: true, on: boolean}}
+   */
   projectAccountSwitch({ project = null, on = false, by = null } = {}) {
     const bar = this.#projectOwnerBar(project, by, "switching a project's Claude account");
     if (bar) return bar;
@@ -1469,6 +2114,10 @@ export class AiAccounts {
 
   /* R10 `projectAccountState`: its owners `{held, kind, on, set_at, by, uses, serving}`, its joined participants
      `{on, serving}`, anyone else as absent (after sight: C-70.1 at existence). Never the key; writes nothing. */
+  /**
+   * @param {{project?: string | null, viewer?: string | null}} [args]
+   * @returns {MembershipRefusal | ProjectAccountOwners | {ok: true, on: boolean, serving: boolean}}
+   */
   projectAccountState({ project = null, viewer = null } = {}) {
     const id = AiAccounts.#memberOf(viewer);
     const absent = noSuchProject(typeof project === "string" ? project : null);
@@ -1487,6 +2136,10 @@ export class AiAccounts {
 
   /* R12 `projectKeyNotice`: `{due, text}` for a member and a project until their own act records that they have read
      it; writes nothing. */
+  /**
+   * @param {{member?: string | null, project?: string | null}} [args]
+   * @returns {NoticeAnswer} its text the project's disclosure, the project's name filled
+   */
   projectKeyNotice({ member = null, project = null } = {}) {
     const id = AiAccounts.#memberOf(member);
     const seen = id !== null && typeof project === "string"
@@ -1496,6 +2149,10 @@ export class AiAccounts {
 
   /* R12 `projectKeyNoticeSeen`: the member's own act (R1's refusals), for a project they have joined, recorded once
      with its instant; again answers `already: true`. */
+  /**
+   * @param {{member?: string | null, project?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | NoticeSeenAnswer}
+   */
   projectKeyNoticeSeen({ member = null, project = null, by = null } = {}) {
     const bar = this.#accountBar(member, by);
     if (bar) return bar;
@@ -1522,6 +2179,10 @@ export class AiAccounts {
      than the account's member (membership R127), the account's set instant when none is recorded (K2404 (1)); `key`
      stable per project and suspension. `at` is the caller's instant; the answer is the suspensions in force at the
      call. In-plane, for notice-producers R16; writes nothing and never throws (a read that fails answers none). */
+  /**
+   * @param {{viewer?: string | null, at?: string | null}} [args]
+   * @returns {Suspension[]}
+   */
   projectAccountsSuspended({ viewer = null, at = null } = {}) {
     try {
       const id = AiAccounts.#memberOf(viewer);
@@ -1548,6 +2209,12 @@ export class AiAccounts {
    * whoever pays; `aiKeptAway` (R7) is the one site for both refusals. */
 
   /* R22 `projectAiKeepAwaySet`: an owner's act (R10's refusals), R20's reason rule, `uses` as R20's; answers the state. */
+  /**
+   * @param {{project?: string | null, on?: boolean, uses?: string[] | null, reason?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | MembershipRefusal | ProjectKeepAway}
+   * @bound reason: 1 to 2,000 characters, not blank, when on; when given with on false, at most 2,000
+   * @bound uses: absent, or a non-empty list of USE_KINDS entries, each once
+   */
   projectAiKeepAwaySet({ project = null, on = false, uses = null, reason = null, by = null } = {}) {
     const bar = this.#projectOwnerBar(project, by, "keeping a project's material away from the assistant");
     if (bar) return bar;
@@ -1571,6 +2238,10 @@ export class AiAccounts {
 
   /* R22 `projectAiKeepAwayState`: the project's limit, to its participants (joined or leaving); anyone else as absent.
      Writes nothing. */
+  /**
+   * @param {{project?: string | null, viewer?: string | null}} [args]
+   * @returns {MembershipRefusal | ProjectKeepAway}
+   */
   projectAiKeepAwayState({ project = null, viewer = null } = {}) {
     const id = AiAccounts.#memberOf(viewer);
     const absent = noSuchProject(typeof project === "string" ? project : null);
@@ -1585,6 +2256,10 @@ export class AiAccounts {
   /* R22 `projectsKeptAway`: the ids of the projects whose limit covers `use`, for reads under a grant (answers R30)
      and exploring's scope (ai-use R9). In-plane; writes nothing; null when the limits cannot be read, which its caller
      reads as unknown. */
+  /**
+   * @param {{use?: string | null}} [args]
+   * @returns {string[] | null} the projects' ids, in order; null when the limits cannot be read
+   */
   projectsKeptAway({ use = null } = {}) {
     try {
       return this.#rows(`SELECT k.project_id, k.is_on, k.uses FROM project_keep_away k
@@ -1602,6 +2277,10 @@ export class AiAccounts {
 
   /* R24 `sealText`: `text` sealed under `owner` and `kind` by THE SEAL above (byte-identical to credentials' before T48),
      `{ok, sealed, iv}`, or ACCOUNT_SEAL_UNAVAILABLE when no seal secret is bound. Never throws. */
+  /**
+   * @param {{owner?: string | null, kind?: string | null, text?: string | null}} [args]
+   * @returns {Promise<Refusal | {ok: true, sealed: string, iv: string}>}
+   */
   async sealText({ owner = null, kind = null, text = null } = {}) {
     const unsealable = this.#seal();
     if (unsealable) return unsealable;
@@ -1615,6 +2294,10 @@ export class AiAccounts {
 
   /* R24 `unsealText`: the text sealed under `owner` and `kind`, `{ok, text}`; ACCOUNT_SEAL_UNAVAILABLE when no seal
      secret is bound or the row does not open (the seal secret changed, or another owner's or kind's row). Never throws. */
+  /**
+   * @param {{owner?: string | null, kind?: string | null, sealed?: string | null, iv?: string | null}} [args]
+   * @returns {Promise<Refusal | {ok: true, text: string}>}
+   */
   async unsealText({ owner = null, kind = null, sealed = null, iv = null } = {}) {
     const unsealable = this.#seal();
     if (unsealable) return unsealable;
@@ -1627,11 +2310,19 @@ export class AiAccounts {
 
   /* R25 `accountActBar`: R1's refusals for an act on `member`'s account by `by`, or null (credentials R27's first
      step). */
+  /**
+   * @param {{member?: string | null, by?: string | null}} [args]
+   * @returns {Refusal | null}
+   */
   accountActBar({ member = null, by = null } = {}) { return this.#accountBar(member, by); }
 
   /* R25 `accountServing`: R11's choice for `member`'s act of kind `use` in `project` (or none), without unsealing:
      `{refusal}`, or `{level, kind, project?, member?}`, never a key or a row (credentials R27's cascade). Writes
      nothing. */
+  /**
+   * @param {{member?: string | null, use?: string | null, project?: string | null}} [args]
+   * @returns {AccountServing | {refusal: Refusal | MembershipRefusal}}
+   */
   accountServing({ member = null, use = null, project = null } = {}) {
     const id = AiAccounts.#memberOf(member);
     const r = this.#resolve(id, use, project === undefined ? null : project);
@@ -1642,14 +2333,21 @@ export class AiAccounts {
 
   /* R25 `servingAccountOf`: which account serves an active member's act now, `{level, signin?, suggestions,
      standing}`, or null (credentials R32). Writes nothing. */
+  /**
+   * @param {{member?: string | null}} [args]
+   * @returns {ServingAccount | null}
+   */
   servingAccountOf({ member = null } = {}) {
     const id = AiAccounts.#memberOf(member);
     return id === null ? null : this.#servingAccount(id);
   }
 
   /* R25: the one-site helpers of C-29.14, C-29.20 and C-29.15 (K231), for credentials' grants and run credential. */
+  /** @param {string} detail @returns {Refusal} NOT_YOUR_ACCOUNT */
   notYourAccount(detail) { return AiAccounts.#notYours(detail); }
+  /** @param {string | null} member @param {'served' | 'own' | 'member' | 'project' | true} [scope] @returns {Refusal} NO_ACCOUNT */
   noAccount(member, scope = "served") { return this.#noAccount(member, scope); }
+  /** @param {string} detail @param {Object<string, *>} [extra] @returns {Refusal} ACCOUNT_MEMBER_NOT_ACTIVE */
   accountMemberNotActive(detail, extra) { return AiAccounts.#row(AI_ACCOUNT_CHECKS, "ACCOUNT_MEMBER_NOT_ACTIVE", detail, extra); }
 
   /* R26 `onAccountCleared`: one registration per module, each refused through membership's R81 (a malformed one, or
@@ -1657,8 +2355,14 @@ export class AiAccounts {
      why, reference_held}` when a reference is removed (R1; `account` "reference") or a sign-in is cleared (R18, R27;
      `account` "signin"); `reference_held` says whether a reference of the member's still serves her. A listener's
      answer is ignored, and one that throws changes nothing of the act or of another listener's notice. */
+  /** @type {{module: string, fn: (notice: ClearedNotice) => *}[]} */
   #clearedListeners = [];   // [{module, fn}]
 
+  /**
+   * @param {string} module
+   * @param {(notice: ClearedNotice) => *} fn called once per account cleared, inside the act; its answer is ignored
+   * @returns {MembershipRefusal | Registered}
+   */
   onAccountCleared(module, fn) {
     const refused = listenerRefusal(this.#clearedListeners, module, fn);
     if (refused) return refused;
@@ -1677,6 +2381,7 @@ export class AiAccounts {
    setting cannot be read: asked of the one site over no store, so it is that answer and never a copy of it. An in-plane
    caller whose call to `aiKeptAway` threw or could not be made answers this as given (K231). */
 const deepFreeze = (o) => { for (const v of Object.values(o)) if (v && typeof v === "object") deepFreeze(v); return Object.freeze(o); };
+/** @type {Refusal & {keep_away: KeepAwayWho}} AI_KEPT_AWAY with its keep_away members null, frozen */
 export const KEPT_AWAY_UNREADABLE = deepFreeze(new AiAccounts({ sql: null }).aiKeptAway());
 
 /* K61: the one AiAccounts of a Durable Object's storage, made on first use over its `sql`, reaching record-core and
@@ -1684,6 +2389,12 @@ export const KEPT_AWAY_UNREADABLE = deepFreeze(new AiAccounts({ sql: null }).aiK
    `record`, `membership` and `sealSecret` are read on the first call only (R32: credentials' factory passes the seal
    secret it is given). */
 const OF = new WeakMap();
+/**
+ * The one AiAccounts of a Durable Object's storage.
+ * @param {*} ctx the Durable Object's state (its `storage`), or the storage itself
+ * @param {AiAccountsOptions} [options]
+ * @returns {AiAccounts}
+ */
 export function aiAccountsOf(ctx, { record = null, membership = null, sealSecret = null, now = null } = {}) {
   const storage = ctx && ctx.storage ? ctx.storage : ctx;
   let a = OF.get(storage);
@@ -1704,6 +2415,14 @@ export function aiAccountsOf(ctx, { record = null, membership = null, sealSecret
    `accountUsesOf`, `aiKeptAway`, `projectAccountsSuspended`, `projectsKeptAway`, `disclosureDue` and R24–R26) are not
    routed; the retired `accountswitchset` and `groupswitchset` (R4, R9) are not in it. Which credential reaches each op
    is op-declarations' and control-plane's. */
+/**
+ * The handlers of the ops this module answers, over one request.
+ * @param {AiAccounts | null} a the instance, or credentials' instance, which answers the same names and holds it as `accounts`; null only lists the ops
+ * @param {URL} url the request's URL, whose query carries the stamps `by` and `viewer`
+ * @param {*} body the parsed body
+ * @param {*} [env] the store's environment (`BIO_NOW_MS`)
+ * @returns {AiAccountsHandlers}
+ */
 export function aiAccountsOps(a, url, body, env) {
   /* R39 (K5192): the store's environment is the instance clock's source (`#nowMs`). `a` is the instance, or `credentials`'
      instance, which answers through its `accounts`; both read the same clock. */

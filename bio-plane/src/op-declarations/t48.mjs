@@ -10,6 +10,7 @@
    and this file lists them once, under their new owner.
    This file is data only (R5, R7): `index.mjs`' `family()` merges each share into its owner's family (its `ops` and
    `extra` merged), as it merges the earlier shares, and builds each of `T48_FAMILIES` as it builds `T45_FAMILIES`. */
+/** @param {string} key */
 const QUERY = (key) => Object.freeze({ key, at: "query" });
 
 const T48_SHARES = Object.freeze({

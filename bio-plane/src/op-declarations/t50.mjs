@@ -14,6 +14,7 @@
    `question`, `note`, `flag`, `kinds`, `only`, `since`, `after`, `limit`, `captureSha`, `id`, `set` are request fields,
    never stamps. This file is data only (R5, R7). */
 
+/** @param {string} key */
 const QUERY = (key) => Object.freeze({ key, at: "query" });
 
 const T50_SHARES = Object.freeze({

@@ -28,6 +28,184 @@ import { composeNeeds } from "./compose.mjs";
 import { declaredRows, disagreement, specOf, stampsOf, needsOf, isPublic, needsRequired } from "./declared.mjs";
 import { localize } from "../setup-words/index.mjs";
 
+/**
+ * Where a family's actor or proposer is read from: the stamp's key and whether the owner reads it from the query or the body.
+ * @typedef {Object} StampAt
+ * @property {string} key
+ * @property {'query' | 'body'} at
+ * @bound key: by, author, proposer, member or viewer
+ */
+/**
+ * One op's spec: who reaches it and whether it writes.
+ * @typedef {Object} OpSpec
+ * @property {readonly string[] | null} classes the classes that reach it; null: a public op, every caller
+ * @property {readonly string[]} [machineClasses] the bearer classes that reach it; [] refuses every bearer
+ * @property {boolean} mutating
+ * @bound classes: not empty when not null
+ * @bound each class admin, member, probe or daemon
+ */
+/**
+ * Every op's spec by its name.
+ * @typedef {Readonly<Record<string, OpSpec>>} OpTable
+ * @bound holds each op of the hand rows, of every family and of the owners' registered declarations, and each alias (OP_ALIASES) with its op's row
+ */
+/**
+ * A frozen list of op names; each alias stands beside the op it names (`listed`).
+ * @typedef {readonly string[]} OpList
+ */
+/**
+ * The kinds an op of a family takes (R19).
+ * @typedef {'open' | 'member' | 'admin' | 'own' | 'proposal' | 'tally' | 'read' | 'ownread' | 'roster' | 'publishact' | 'sessionact' | 'sessionread' | 'door' | 'public' | 'plainread' | 'daemonact' | 'settingread' | 'sessionend' | 'sightact' | 'publicread' | 'runact' | 'sessionrunact' | 'owners' | 'publishgate' | 'memberrun' | 'founder' | 'readfenced'} OpKindName
+ */
+/**
+ * One kind: the spec and capability row it gives its ops.
+ * @typedef {Object} OpKindRow
+ * @property {OpSpec} spec
+ * @property {string | null | undefined} needs the capability; null: none; undefined: no NEEDS row at all
+ * @property {boolean} [public] in no session set
+ * @property {boolean} [stamped] false: stamped only what its family's extras name
+ * @property {boolean} [founderOnly] in the founder's session set alone
+ */
+/**
+ * @typedef {{readonly [K in OpKindName]: OpKindRow}} OpKinds
+ */
+/**
+ * One owner's family of ops, as `familyOf` builds it (R17–R20).
+ * @typedef {Object} OpFamily
+ * @property {string} owner the module that serves the ops
+ * @property {string} cite
+ * @property {StampAt | null} actor
+ * @property {StampAt | null} proposer
+ * @property {Readonly<Record<string, OpKindName>>} kinds each op and its kind
+ * @property {Readonly<Record<string, readonly string[]>>} extra the stamps beyond these an op's owner reads
+ * @property {OpList} acts
+ * @property {OpList} proposals
+ * @property {OpList} reads
+ */
+/**
+ * A session set (R5): it answers as a Set does and has no way to change; add, delete and clear refuse.
+ * @typedef {Iterable<string, undefined, unknown> & FrozenOpSetMethods} FrozenOpSet
+ */
+/**
+ * @typedef {Object} FrozenOpSetMethods
+ * @property {(op: string) => boolean} has
+ * @property {number} size
+ * @property {() => IterableIterator<string, undefined, unknown>} values
+ * @property {() => IterableIterator<string, undefined, unknown>} keys
+ * @property {() => IterableIterator<[string, string], undefined, unknown>} entries
+ * @property {(fn: (value: string, key: string, set: unknown) => void, self?: unknown) => void} forEach
+ * @property {(...args: unknown[]) => never} add
+ * @property {(...args: unknown[]) => never} delete
+ * @property {(...args: unknown[]) => never} clear
+ * @throws {TypeError} add, delete, clear: a session set is frozen data
+ */
+/**
+ * The two session sets: the ops a member's session reaches and the ops the founder's password session reaches.
+ * @typedef {Object} SessionOps
+ * @property {FrozenOpSet} member
+ * @property {FrozenOpSet} admin
+ * @bound a public op is in neither; a founder-only op in admin alone
+ */
+/**
+ * Each op's working capability: null for none; an op with no row (a public op) needs none.
+ * @typedef {Readonly<Record<string, string | null>>} NeedsTable
+ * @bound a capability is one op-capabilities or an owner's declaration names (contribute, publish)
+ */
+/**
+ * The stamps the door sets on each op.
+ * @typedef {Readonly<Record<string, readonly string[]>>} OpStamps
+ * @bound each stamp author, bodyBy, by, country, member, owner, principal, proposer, session, source or viewer
+ */
+/**
+ * Each alias of the screen registry's requirement functions and the op it names (R21).
+ * @typedef {Readonly<Record<string, string>>} OpAliases
+ */
+/**
+ * The act gate (R1).
+ * @typedef {Object} ActGate
+ * @property {(id: string) => string | null} needs the capability NEEDS names for the op, else null
+ * @property {(id: string) => 'session' | 'admin-session' | 'machine'} mode how the op is reached
+ */
+/**
+ * Each unattended op recorded by decision, and the citation of where the decision is recorded.
+ * @typedef {Readonly<Record<string, string>>} UnattendedByDecision
+ */
+/**
+ * @typedef {Object} HelpAbsentGround
+ * @property {string} ground why the ops have no explanation
+ * @property {OpList} ops
+ */
+/**
+ * The member ops with no explanation in affordances' ACT_HELP, by ground (R34).
+ * @typedef {{readonly [K in 'alias' | 'read' | 'nocontrol' | 'unexplained']: HelpAbsentGround}} ActHelpAbsent
+ */
+/**
+ * What a plan-mode run's agent credential is scoped to.
+ * @typedef {Object} PlanRunScope
+ * @property {OpList} reads
+ * @property {OpList} writes
+ */
+/**
+ * A browser act (R76): no op; the screen it is done on, its census row and the registry row it takes the place of.
+ * @typedef {Object} BrowserAct
+ * @property {string} screen
+ * @property {string} census
+ * @property {string} registry
+ * @bound registry: written owed:<act> DEC-330
+ */
+/**
+ * What an owner declared for an op's fields, frozen.
+ * @typedef {Object} DeclaredFields
+ * @property {readonly string[]} accepts
+ * @property {ReadonlyArray<string | readonly string[]>} requires each a field, or a list of fields one of which is required
+ * @bound accepts, requires: each name not empty; a list in requires not empty
+ */
+/**
+ * One owner's row for one op (R80).
+ * @typedef {Object} DeclaredOpRow
+ * @property {readonly string[] | null} classes
+ * @property {readonly string[]} [machineClasses]
+ * @property {boolean} mutating
+ * @property {readonly string[]} [stamps]
+ * @property {string | null} [needs]
+ * @property {DeclaredFields} [fields]
+ * @property {unknown} [weight] op-grades'; not read here
+ * @property {unknown} [description] op-grades'; not read here
+ * @bound classes: not empty when not null
+ * @bound each class admin, member, probe or daemon
+ * @bound stamps: each author, bodyBy, by, country, member, owner, principal, proposer, session, source or viewer
+ * @bound needs: not empty when a string
+ */
+/**
+ * Every owner's declarations: `{owner: {op: row}}` or `[[owner, {op: row}]]`.
+ * @typedef {Record<string, Record<string, DeclaredOpRow>> | Array<[string, Record<string, DeclaredOpRow>]>} DeclaredOpsInput
+ */
+/**
+ * An act as affordances publishes it (its ACTS, CAPTURE_ACTS, PER_ITEM_ACTS), as far as the decoration reads it.
+ * @typedef {Object} ActToDecorate
+ * @property {string} id the act's op
+ * @property {string} [label]
+ * @property {string} [weight]
+ * @property {*} [prompt]
+ * @property {*} [proposal]
+ * @property {*} [purposes]
+ */
+/**
+ * An act decorated for a caller (affordances' `decorate`, R11).
+ * @typedef {Object} DecoratedAct
+ * @property {string} id
+ * @property {string | undefined} label
+ * @property {string | null} weight
+ * @property {string | null} needs
+ * @property {'session' | 'admin-session' | 'machine' | null} mode
+ * @property {*} rung affordances' declared rung, or null
+ * @property {string | null} rung_absence
+ * @property {*} prompt
+ * @property {boolean} phone
+ * @property {*} [proposal]
+ * @property {*} [purposes]
+ */
+
 /* R69 (T48; N1039, K3147, K3200): EVALUATING THIS MODULE BUILDS NO TABLE. Every table and list below is frozen data
    (R5), built by `build()` on the first read of any export and reused after, so importing the module adds nothing to the
    plane's global scope. Each exported name stays a plain binding, to a proxy over an empty target of the right kind;
@@ -2797,6 +2975,16 @@ const lazy = (name, target) => {
    changing nothing: a malformed row, an op in two owners' rows, an owner's row that differs from the hand row of the same
    op (`disagreement`), a mutating op without a `needs`, a registration after the first read and a second registration.
    `declaredFields(op)` answers the frozen `{accepts, requires}` an owner declared for the op, else `undefined`. */
+/**
+ * Records every owner's declared ops for `build()`, once, before the first read of any export (R80, R81).
+ * @param {DeclaredOpsInput} input
+ * @returns {void}
+ * @throws {TypeError} a malformed row, an op in two owners' rows, a row that differs from the hand row of its op, a mutating op with no hand row and no needs, a registration after the first read, a second registration
+ * @bound once, before the first read of any export
+ * @bound an op in one owner's rows only
+ * @bound an op the hand rows hold agrees with its hand row on classes, machineClasses, mutating, and on stamps and needs where given
+ * @bound a mutating op the hand rows do not hold names its needs
+ */
 export function registerDeclaredOps(input) {
   const rows = declaredRows(input);
   const first = rows.size ? rows.keys().next().value : "(no op)";
@@ -2814,117 +3002,125 @@ export function registerDeclaredOps(input) {
   registered = rows;
   for (const [op, rec] of rows) if (rec.fields) DECLARED_FIELDS.set(op, rec.fields);
 }
+/**
+ * @param {string} op
+ * @returns {DeclaredFields | undefined} the fields an owner declared for the op
+ */
 export const declaredFields = (op) => DECLARED_FIELDS.get(op);
 
 /* R1: the act gate's decoration, shared by `op=affordances` and `op=queue`; the gate is read only when a request is decorated. */
+/**
+ * @param {ActToDecorate} a
+ * @returns {DecoratedAct}
+ */
 const decorateAct = (a) => decorate(a, ACT_GATE);
 
-export const BROWSER_ACTS = lazy("BROWSER_ACTS", {});
-export const OPS = lazy("OPS", {});
-export const RETRIEVAL_READS = lazy("RETRIEVAL_READS", []);
-export const READING_READS = lazy("READING_READS", []);
-export const EDGE_ACTIONS = lazy("EDGE_ACTIONS", []);
-export const STATE_ACTIONS = lazy("STATE_ACTIONS", []);
-export const ACTION_ACTIONS = lazy("ACTION_ACTIONS", []);
-export const DECLARATION_ACTIONS = lazy("DECLARATION_ACTIONS", []);
-export const STRUCTURE_ACTIONS = lazy("STRUCTURE_ACTIONS", []);
-export const VERSION_ACTIONS = lazy("VERSION_ACTIONS", []);
-export const PROJECT_ACTIONS = lazy("PROJECT_ACTIONS", []);
-export const GOVERNANCE_ACTIONS = lazy("GOVERNANCE_ACTIONS", []);
-export const IDENTITY_ACTIONS = lazy("IDENTITY_ACTIONS", []);
-export const CUSTODIAL_ACTIONS = lazy("CUSTODIAL_ACTIONS", []);
-export const ROSTER_SELF_ACTIONS = lazy("ROSTER_SELF_ACTIONS", []);
-export const OWN_KEY_ACTIONS = lazy("OWN_KEY_ACTIONS", []);
-export const CAPTURE_MEMBER_ACTIONS = lazy("CAPTURE_MEMBER_ACTIONS", []);
-export const CAPTURE_VIEWER_ACTIONS = lazy("CAPTURE_VIEWER_ACTIONS", []);
-export const CAPTURE_READS = lazy("CAPTURE_READS", []);
-export const SOURCE_ACTIONS = lazy("SOURCE_ACTIONS", []);
-export const SOURCE_READS = lazy("SOURCE_READS", []);
-export const PROVENANCE_JUDGEMENT_ACTIONS = lazy("PROVENANCE_JUDGEMENT_ACTIONS", []);
-export const CALIBRATION_WRITE_ACTIONS = lazy("CALIBRATION_WRITE_ACTIONS", []);
-export const EXPERTISE_ACTIONS = lazy("EXPERTISE_ACTIONS", []);
-export const REGISTRY_ACTIONS = lazy("REGISTRY_ACTIONS", []);
-export const TASK_ACTIONS = lazy("TASK_ACTIONS", []);
-export const QUEUE_ACTIONS = lazy("QUEUE_ACTIONS", []);
-export const AI_RUN_ACTIONS = lazy("AI_RUN_ACTIONS", []);
-export const RUN_VERB_ACTIONS = lazy("RUN_VERB_ACTIONS", []);
-export const RUN_PRODUCTION_ACTIONS = lazy("RUN_PRODUCTION_ACTIONS", []);
-export const POSITIONAL_ACTS = lazy("POSITIONAL_ACTS", []);
-export const BIAS_ACTIONS = lazy("BIAS_ACTIONS", []);
-export const BIAS_DEBT_ACTIONS = lazy("BIAS_DEBT_ACTIONS", []);
-export const INTENT_ACTIONS = lazy("INTENT_ACTIONS", []);
-export const INTENT_READS = lazy("INTENT_READS", []);
-export const REEVALUATION_ACTIONS = lazy("REEVALUATION_ACTIONS", []);
-export const STANDARDS_ACTIONS = lazy("STANDARDS_ACTIONS", []);
-export const STANDARDS_READS = lazy("STANDARDS_READS", []);
-export const CONFORMANCE_ACTIONS = lazy("CONFORMANCE_ACTIONS", []);
-export const CONFORMANCE_READS = lazy("CONFORMANCE_READS", []);
-export const CONSEQUENCES_ACTIONS = lazy("CONSEQUENCES_ACTIONS", []);
-export const CONSEQUENCES_READS = lazy("CONSEQUENCES_READS", []);
-export const FILINGS_ACTIONS = lazy("FILINGS_ACTIONS", []);
-export const FILINGS_READS = lazy("FILINGS_READS", []);
-export const FILING_TEMPLATES_ACTIONS = lazy("FILING_TEMPLATES_ACTIONS", []);
-export const FILING_TEMPLATES_READS = lazy("FILING_TEMPLATES_READS", []);
-export const TEMPLATE_PROPOSAL_ACTIONS = lazy("TEMPLATE_PROPOSAL_ACTIONS", []);
-export const TEMPLATE_DOOR_ACTIONS = lazy("TEMPLATE_DOOR_ACTIONS", []);
-export const TEMPLATE_DOOR_READS = lazy("TEMPLATE_DOOR_READS", []);
-export const GRANT_SECRET_ACTIONS = lazy("GRANT_SECRET_ACTIONS", []);
-export const LOCAL_FACTS_ACTIONS = lazy("LOCAL_FACTS_ACTIONS", []);
-export const LOCAL_FACTS_READS = lazy("LOCAL_FACTS_READS", []);
-export const ESCALATION_ACTIONS = lazy("ESCALATION_ACTIONS", []);
-export const ESCALATION_READS = lazy("ESCALATION_READS", []);
-export const MONITORING_ACTIONS = lazy("MONITORING_ACTIONS", []);
-export const LINK_SWEEP_READS = lazy("LINK_SWEEP_READS", []);
-export const WHAT_CHANGED_PROPOSAL_ACTIONS = lazy("WHAT_CHANGED_PROPOSAL_ACTIONS", []);
-export const WHAT_CHANGED_READS = lazy("WHAT_CHANGED_READS", []);
-export const NETWORK_NOTICES_ACTIONS = lazy("NETWORK_NOTICES_ACTIONS", []);
-export const NETWORK_NOTICES_READS = lazy("NETWORK_NOTICES_READS", []);
-export const NETWORK_NOTICES_BY = lazy("NETWORK_NOTICES_BY", []);
-export const NETWORK_NOTICES_PUBLIC_READS = lazy("NETWORK_NOTICES_PUBLIC_READS", []);
-export const DOCKET_ACTIONS = lazy("DOCKET_ACTIONS", []);
-export const DOCKET_READS = lazy("DOCKET_READS", []);
-export const DOCKET_AUTHOR = lazy("DOCKET_AUTHOR", []);
-export const DOCKET_BY = lazy("DOCKET_BY", []);
-export const DOCKET_PUBLIC_READS = lazy("DOCKET_PUBLIC_READS", []);
-export const CASE_IMPORT_ACTIONS = lazy("CASE_IMPORT_ACTIONS", []);
-export const CASE_IMPORT_READS = lazy("CASE_IMPORT_READS", []);
-export const CASE_IMPORT_BY = lazy("CASE_IMPORT_BY", []);
-export const CASE_CHECKER_PUBLIC_READS = lazy("CASE_CHECKER_PUBLIC_READS", []);
-export const WIZARD_SCRIPTS_ACTIONS = lazy("WIZARD_SCRIPTS_ACTIONS", []);
-export const WIZARD_SCRIPTS_AUTHOR = lazy("WIZARD_SCRIPTS_AUTHOR", []);
-export const WIZARD_SCRIPTS_BY = lazy("WIZARD_SCRIPTS_BY", []);
-export const WIZARD_PROPOSAL_ACTIONS = lazy("WIZARD_PROPOSAL_ACTIONS", []);
-export const WIZARD_PROGRESS_ACTIONS = lazy("WIZARD_PROGRESS_ACTIONS", []);
-export const WIZARD_SCRIPTS_READS = lazy("WIZARD_SCRIPTS_READS", []);
-export const WIZARD_CHECK_READS = lazy("WIZARD_CHECK_READS", []);
-export const CONTRADICTION_ACTIONS = lazy("CONTRADICTION_ACTIONS", []);
-export const CONTRADICTION_READS = lazy("CONTRADICTION_READS", []);
-export const ACTIONS_ACTIONS = lazy("ACTIONS_ACTIONS", []);
-export const ACTIONS_READS = lazy("ACTIONS_READS", []);
-export const ACTION_HOLDS_ACTIONS = lazy("ACTION_HOLDS_ACTIONS", []);
-export const ACTION_HOLDS_READS = lazy("ACTION_HOLDS_READS", []);
-export const ACTION_CLOCKS_ACTIONS = lazy("ACTION_CLOCKS_ACTIONS", []);
-export const ACTION_PLANS_ACTIONS = lazy("ACTION_PLANS_ACTIONS", []);
-export const ACTION_PLANS_READS = lazy("ACTION_PLANS_READS", []);
-export const ACTION_PLANS_PREVIEWS = lazy("ACTION_PLANS_PREVIEWS", []);
-export const PLAN_PROPOSAL_ACTIONS = lazy("PLAN_PROPOSAL_ACTIONS", []);
-export const QUERY_AUTHOR_ACTIONS = lazy("QUERY_AUTHOR_ACTIONS", []);
-export const ACTION_LAYER_ACTIONS = lazy("ACTION_LAYER_ACTIONS", []);
-export const ACTION_LAYER_READS = lazy("ACTION_LAYER_READS", []);
-export const PLAN_RUN_SCOPE = lazy("PLAN_RUN_SCOPE", {});
-export const RECOGNISER_ACTIONS = lazy("RECOGNISER_ACTIONS", []);
-export const PROGRESSION_ACTIONS = lazy("PROGRESSION_ACTIONS", []);
-export const OP_KINDS = lazy("OP_KINDS", {});
-export const OP_FAMILIES = lazy("OP_FAMILIES", {});
-export const FAMILY_OPS = lazy("FAMILY_OPS", []);
-export const FAMILY_SESSION_OPS = lazy("FAMILY_SESSION_OPS", []);
-export const OP_ALIASES = lazy("OP_ALIASES", {});
-export const ASK_GRANT_OPS = lazy("ASK_GRANT_OPS", []);
-export const OP_STAMPS = lazy("OP_STAMPS", {});
-export const SESSION_OPS = lazy("SESSION_OPS", {});
-export const NEEDS = lazy("NEEDS", {});
-export const ACT_GATE = lazy("ACT_GATE", {});
-export const UNATTENDED_BY_DECISION = lazy("UNATTENDED_BY_DECISION", {});
-export const ACT_HELP_ABSENT = lazy("ACT_HELP_ABSENT", {});
+/** @type {Readonly<Record<string, BrowserAct>>} */ export const BROWSER_ACTS = lazy("BROWSER_ACTS", {});
+/** @type {OpTable} */ export const OPS = lazy("OPS", {});
+/** @type {OpList} */ export const RETRIEVAL_READS = lazy("RETRIEVAL_READS", []);
+/** @type {OpList} */ export const READING_READS = lazy("READING_READS", []);
+/** @type {OpList} */ export const EDGE_ACTIONS = lazy("EDGE_ACTIONS", []);
+/** @type {OpList} */ export const STATE_ACTIONS = lazy("STATE_ACTIONS", []);
+/** @type {OpList} */ export const ACTION_ACTIONS = lazy("ACTION_ACTIONS", []);
+/** @type {OpList} */ export const DECLARATION_ACTIONS = lazy("DECLARATION_ACTIONS", []);
+/** @type {OpList} */ export const STRUCTURE_ACTIONS = lazy("STRUCTURE_ACTIONS", []);
+/** @type {OpList} */ export const VERSION_ACTIONS = lazy("VERSION_ACTIONS", []);
+/** @type {OpList} */ export const PROJECT_ACTIONS = lazy("PROJECT_ACTIONS", []);
+/** @type {OpList} */ export const GOVERNANCE_ACTIONS = lazy("GOVERNANCE_ACTIONS", []);
+/** @type {OpList} */ export const IDENTITY_ACTIONS = lazy("IDENTITY_ACTIONS", []);
+/** @type {OpList} */ export const CUSTODIAL_ACTIONS = lazy("CUSTODIAL_ACTIONS", []);
+/** @type {OpList} */ export const ROSTER_SELF_ACTIONS = lazy("ROSTER_SELF_ACTIONS", []);
+/** @type {OpList} */ export const OWN_KEY_ACTIONS = lazy("OWN_KEY_ACTIONS", []);
+/** @type {OpList} */ export const CAPTURE_MEMBER_ACTIONS = lazy("CAPTURE_MEMBER_ACTIONS", []);
+/** @type {OpList} */ export const CAPTURE_VIEWER_ACTIONS = lazy("CAPTURE_VIEWER_ACTIONS", []);
+/** @type {OpList} */ export const CAPTURE_READS = lazy("CAPTURE_READS", []);
+/** @type {OpList} */ export const SOURCE_ACTIONS = lazy("SOURCE_ACTIONS", []);
+/** @type {OpList} */ export const SOURCE_READS = lazy("SOURCE_READS", []);
+/** @type {OpList} */ export const PROVENANCE_JUDGEMENT_ACTIONS = lazy("PROVENANCE_JUDGEMENT_ACTIONS", []);
+/** @type {OpList} */ export const CALIBRATION_WRITE_ACTIONS = lazy("CALIBRATION_WRITE_ACTIONS", []);
+/** @type {OpList} */ export const EXPERTISE_ACTIONS = lazy("EXPERTISE_ACTIONS", []);
+/** @type {OpList} */ export const REGISTRY_ACTIONS = lazy("REGISTRY_ACTIONS", []);
+/** @type {OpList} */ export const TASK_ACTIONS = lazy("TASK_ACTIONS", []);
+/** @type {OpList} */ export const QUEUE_ACTIONS = lazy("QUEUE_ACTIONS", []);
+/** @type {OpList} */ export const AI_RUN_ACTIONS = lazy("AI_RUN_ACTIONS", []);
+/** @type {OpList} */ export const RUN_VERB_ACTIONS = lazy("RUN_VERB_ACTIONS", []);
+/** @type {OpList} */ export const RUN_PRODUCTION_ACTIONS = lazy("RUN_PRODUCTION_ACTIONS", []);
+/** @type {OpList} */ export const POSITIONAL_ACTS = lazy("POSITIONAL_ACTS", []);
+/** @type {OpList} */ export const BIAS_ACTIONS = lazy("BIAS_ACTIONS", []);
+/** @type {OpList} */ export const BIAS_DEBT_ACTIONS = lazy("BIAS_DEBT_ACTIONS", []);
+/** @type {OpList} */ export const INTENT_ACTIONS = lazy("INTENT_ACTIONS", []);
+/** @type {OpList} */ export const INTENT_READS = lazy("INTENT_READS", []);
+/** @type {OpList} */ export const REEVALUATION_ACTIONS = lazy("REEVALUATION_ACTIONS", []);
+/** @type {OpList} */ export const STANDARDS_ACTIONS = lazy("STANDARDS_ACTIONS", []);
+/** @type {OpList} */ export const STANDARDS_READS = lazy("STANDARDS_READS", []);
+/** @type {OpList} */ export const CONFORMANCE_ACTIONS = lazy("CONFORMANCE_ACTIONS", []);
+/** @type {OpList} */ export const CONFORMANCE_READS = lazy("CONFORMANCE_READS", []);
+/** @type {OpList} */ export const CONSEQUENCES_ACTIONS = lazy("CONSEQUENCES_ACTIONS", []);
+/** @type {OpList} */ export const CONSEQUENCES_READS = lazy("CONSEQUENCES_READS", []);
+/** @type {OpList} */ export const FILINGS_ACTIONS = lazy("FILINGS_ACTIONS", []);
+/** @type {OpList} */ export const FILINGS_READS = lazy("FILINGS_READS", []);
+/** @type {OpList} */ export const FILING_TEMPLATES_ACTIONS = lazy("FILING_TEMPLATES_ACTIONS", []);
+/** @type {OpList} */ export const FILING_TEMPLATES_READS = lazy("FILING_TEMPLATES_READS", []);
+/** @type {OpList} */ export const TEMPLATE_PROPOSAL_ACTIONS = lazy("TEMPLATE_PROPOSAL_ACTIONS", []);
+/** @type {OpList} */ export const TEMPLATE_DOOR_ACTIONS = lazy("TEMPLATE_DOOR_ACTIONS", []);
+/** @type {OpList} */ export const TEMPLATE_DOOR_READS = lazy("TEMPLATE_DOOR_READS", []);
+/** @type {OpList} */ export const GRANT_SECRET_ACTIONS = lazy("GRANT_SECRET_ACTIONS", []);
+/** @type {OpList} */ export const LOCAL_FACTS_ACTIONS = lazy("LOCAL_FACTS_ACTIONS", []);
+/** @type {OpList} */ export const LOCAL_FACTS_READS = lazy("LOCAL_FACTS_READS", []);
+/** @type {OpList} */ export const ESCALATION_ACTIONS = lazy("ESCALATION_ACTIONS", []);
+/** @type {OpList} */ export const ESCALATION_READS = lazy("ESCALATION_READS", []);
+/** @type {OpList} */ export const MONITORING_ACTIONS = lazy("MONITORING_ACTIONS", []);
+/** @type {OpList} */ export const LINK_SWEEP_READS = lazy("LINK_SWEEP_READS", []);
+/** @type {OpList} */ export const WHAT_CHANGED_PROPOSAL_ACTIONS = lazy("WHAT_CHANGED_PROPOSAL_ACTIONS", []);
+/** @type {OpList} */ export const WHAT_CHANGED_READS = lazy("WHAT_CHANGED_READS", []);
+/** @type {OpList} */ export const NETWORK_NOTICES_ACTIONS = lazy("NETWORK_NOTICES_ACTIONS", []);
+/** @type {OpList} */ export const NETWORK_NOTICES_READS = lazy("NETWORK_NOTICES_READS", []);
+/** @type {OpList} */ export const NETWORK_NOTICES_BY = lazy("NETWORK_NOTICES_BY", []);
+/** @type {OpList} */ export const NETWORK_NOTICES_PUBLIC_READS = lazy("NETWORK_NOTICES_PUBLIC_READS", []);
+/** @type {OpList} */ export const DOCKET_ACTIONS = lazy("DOCKET_ACTIONS", []);
+/** @type {OpList} */ export const DOCKET_READS = lazy("DOCKET_READS", []);
+/** @type {OpList} */ export const DOCKET_AUTHOR = lazy("DOCKET_AUTHOR", []);
+/** @type {OpList} */ export const DOCKET_BY = lazy("DOCKET_BY", []);
+/** @type {OpList} */ export const DOCKET_PUBLIC_READS = lazy("DOCKET_PUBLIC_READS", []);
+/** @type {OpList} */ export const CASE_IMPORT_ACTIONS = lazy("CASE_IMPORT_ACTIONS", []);
+/** @type {OpList} */ export const CASE_IMPORT_READS = lazy("CASE_IMPORT_READS", []);
+/** @type {OpList} */ export const CASE_IMPORT_BY = lazy("CASE_IMPORT_BY", []);
+/** @type {OpList} */ export const CASE_CHECKER_PUBLIC_READS = lazy("CASE_CHECKER_PUBLIC_READS", []);
+/** @type {OpList} */ export const WIZARD_SCRIPTS_ACTIONS = lazy("WIZARD_SCRIPTS_ACTIONS", []);
+/** @type {OpList} */ export const WIZARD_SCRIPTS_AUTHOR = lazy("WIZARD_SCRIPTS_AUTHOR", []);
+/** @type {OpList} */ export const WIZARD_SCRIPTS_BY = lazy("WIZARD_SCRIPTS_BY", []);
+/** @type {OpList} */ export const WIZARD_PROPOSAL_ACTIONS = lazy("WIZARD_PROPOSAL_ACTIONS", []);
+/** @type {OpList} */ export const WIZARD_PROGRESS_ACTIONS = lazy("WIZARD_PROGRESS_ACTIONS", []);
+/** @type {OpList} */ export const WIZARD_SCRIPTS_READS = lazy("WIZARD_SCRIPTS_READS", []);
+/** @type {OpList} */ export const WIZARD_CHECK_READS = lazy("WIZARD_CHECK_READS", []);
+/** @type {OpList} */ export const CONTRADICTION_ACTIONS = lazy("CONTRADICTION_ACTIONS", []);
+/** @type {OpList} */ export const CONTRADICTION_READS = lazy("CONTRADICTION_READS", []);
+/** @type {OpList} */ export const ACTIONS_ACTIONS = lazy("ACTIONS_ACTIONS", []);
+/** @type {OpList} */ export const ACTIONS_READS = lazy("ACTIONS_READS", []);
+/** @type {OpList} */ export const ACTION_HOLDS_ACTIONS = lazy("ACTION_HOLDS_ACTIONS", []);
+/** @type {OpList} */ export const ACTION_HOLDS_READS = lazy("ACTION_HOLDS_READS", []);
+/** @type {OpList} */ export const ACTION_CLOCKS_ACTIONS = lazy("ACTION_CLOCKS_ACTIONS", []);
+/** @type {OpList} */ export const ACTION_PLANS_ACTIONS = lazy("ACTION_PLANS_ACTIONS", []);
+/** @type {OpList} */ export const ACTION_PLANS_READS = lazy("ACTION_PLANS_READS", []);
+/** @type {OpList} */ export const ACTION_PLANS_PREVIEWS = lazy("ACTION_PLANS_PREVIEWS", []);
+/** @type {OpList} */ export const PLAN_PROPOSAL_ACTIONS = lazy("PLAN_PROPOSAL_ACTIONS", []);
+/** @type {OpList} */ export const QUERY_AUTHOR_ACTIONS = lazy("QUERY_AUTHOR_ACTIONS", []);
+/** @type {OpList} */ export const ACTION_LAYER_ACTIONS = lazy("ACTION_LAYER_ACTIONS", []);
+/** @type {OpList} */ export const ACTION_LAYER_READS = lazy("ACTION_LAYER_READS", []);
+/** @type {PlanRunScope} */ export const PLAN_RUN_SCOPE = lazy("PLAN_RUN_SCOPE", {});
+/** @type {OpList} */ export const RECOGNISER_ACTIONS = lazy("RECOGNISER_ACTIONS", []);
+/** @type {OpList} */ export const PROGRESSION_ACTIONS = lazy("PROGRESSION_ACTIONS", []);
+/** @type {OpKinds} */ export const OP_KINDS = lazy("OP_KINDS", {});
+/** @type {Readonly<Record<string, OpFamily>>} */ export const OP_FAMILIES = lazy("OP_FAMILIES", {});
+/** @type {OpList} */ export const FAMILY_OPS = lazy("FAMILY_OPS", []);
+/** @type {OpList} */ export const FAMILY_SESSION_OPS = lazy("FAMILY_SESSION_OPS", []);
+/** @type {OpAliases} */ export const OP_ALIASES = lazy("OP_ALIASES", {});
+/** @type {OpList} */ export const ASK_GRANT_OPS = lazy("ASK_GRANT_OPS", []);
+/** @type {OpStamps} */ export const OP_STAMPS = lazy("OP_STAMPS", {});
+/** @type {SessionOps} */ export const SESSION_OPS = lazy("SESSION_OPS", {});
+/** @type {NeedsTable} */ export const NEEDS = lazy("NEEDS", {});
+/** @type {ActGate} */ export const ACT_GATE = lazy("ACT_GATE", {});
+/** @type {UnattendedByDecision} */ export const UNATTENDED_BY_DECISION = lazy("UNATTENDED_BY_DECISION", {});
+/** @type {ActHelpAbsent} */ export const ACT_HELP_ABSENT = lazy("ACT_HELP_ABSENT", {});
 
 export { REAUTH_ACTS, decorateAct };
